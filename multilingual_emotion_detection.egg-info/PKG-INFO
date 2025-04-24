@@ -1,0 +1,27 @@
+Metadata-Version: 2.1
+Name: multilingual_emotion_detection
+Version: 0.1.0
+Summary: A system for detecting emotions in multilingual text (English and Hindi)
+Home-page: https://github.com/username/multilingual_emotion_detection
+Author: Abhisek
+Author-email: your.email@example.com
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.9
+Requires-Dist: torch>=2.0.0
+Requires-Dist: transformers>=4.30.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: scikit-learn>=1.2.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: seaborn>=0.12.0
+Requires-Dist: pytest>=7.3.0
+Requires-Dist: pytest-cov>=4.1.0
+Requires-Dist: tqdm>=4.65.0
+Requires-Dist: ipython>=8.0.0

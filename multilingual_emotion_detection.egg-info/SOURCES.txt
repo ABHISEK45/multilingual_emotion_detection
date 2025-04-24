@@ -1,0 +1,15 @@
+README.md
+setup.py
+multilingual_emotion_detection.egg-info/PKG-INFO
+multilingual_emotion_detection.egg-info/SOURCES.txt
+multilingual_emotion_detection.egg-info/dependency_links.txt
+multilingual_emotion_detection.egg-info/requires.txt
+multilingual_emotion_detection.egg-info/top_level.txt
+src/__init__.py
+src/evaluation.py
+src/main.py
+src/model.py
+src/preprocessor.py
+tests/test_evaluation.py
+tests/test_model.py
+tests/test_preprocessor.py
