@@ -1,4 +1,284 @@
 """
+Tests for the emotion detection model module.
+
+This module tests the functionality of the EmotionDetectionModel class,
+including initialization, prediction, and error handling.
+"""
+
+import os
+import pytest
+import torch
+import tempfile
+import json
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+from src.model import EmotionDetectionModel, EMOTION_CLASSES
+
+
+class TestEmotionDetectionModel:
+    """Tests for the EmotionDetectionModel class."""
+    
+    def test_initialization_default(self, mock_tokenizer, mock_model, monkeypatch):
+        """Test initialization with default parameters."""
+        # Mock the AutoTokenizer and AutoModelForSequenceClassification
+        monkeypatch.setattr('src.model.AutoTokenizer.from_pretrained', lambda *args, **kwargs: mock_tokenizer)
+        monkeypatch.setattr('src.model.AutoModelForSequenceClassification.from_pretrained', 
+                            lambda *args, **kwargs: mock_model)
+        
+        # Initialize model with default settings
+        model = EmotionDetectionModel()
+        
+        # Check that model and tokenizer are set correctly
+        assert model.model is not None
+        assert model.tokenizer is not None
+        assert model.device in ['cpu', 'cuda']
+        assert 'version' in model.metadata
+    
+    def test_initialization_with_path(self, mock_model_path, mock_tokenizer, mock_model, monkeypatch):
+        """Test initialization with a specified model path."""
+        # Mock the AutoTokenizer and AutoModelForSequenceClassification
+        monkeypatch.setattr('src.model.AutoTokenizer.from_pretrained', lambda *args, **kwargs: mock_tokenizer)
+        monkeypatch.setattr('src.model.AutoModelForSequenceClassification.from_pretrained', 
+                            lambda *args, **kwargs: mock_model)
+        
+        # Initialize model with path
+        model = EmotionDetectionModel(model_path=mock_model_path)
+        
+        # Check that model and tokenizer are set correctly
+        assert model.model is not None
+        assert model.tokenizer is not None
+        assert 'version' in model.metadata
+    
+    def test_initialization_error_handling(self, tmp_path, monkeypatch):
+        """Test error handling during initialization."""
+        # Create an invalid model path
+        invalid_path = tmp_path / "nonexistent_model"
+        
+        # Mock an exception when loading the model
+        def mock_error(*args, **kwargs):
+            raise ValueError("Test error loading model")
+        
+        # Also mock the fallback to ensure we test the full error path
+        def mock_fallback_error(*args, **kwargs):
+            raise RuntimeError("Test error with fallback")
+        
+        monkeypatch.setattr('src.model.AutoModelForSequenceClassification.from_pretrained', mock_error)
+        monkeypatch.setattr('src.model.AutoTokenizer.from_pretrained', mock_error)
+        
+        # Check that initialization with an invalid path raises an error
+        with pytest.raises(RuntimeError):
+            EmotionDetectionModel(model_path=str(invalid_path))
+    
+    def test_predict_single_text(self, mock_emotion_model, sample_texts):
+        """Test prediction for a single text input."""
+        # Get a sample text
+        text = sample_texts['english'][0]
+        
+        # Make prediction
+        result = mock_emotion_model.predict(text)
+        
+        # Check result format
+        assert isinstance(result, dict)
+        assert 'text' in result
+        assert 'emotions' in result
+        assert 'dominant_emotion' in result
+        assert result['text'] == text
+        assert all(emotion in result['emotions'] for emotion in EMOTION_CLASSES)
+        assert result['dominant_emotion'] in EMOTION_CLASSES
+    
+    def test_predict_invalid_input(self, mock_emotion_model):
+        """Test prediction with invalid inputs."""
+        # Test with empty text
+        with pytest.raises(ValueError):
+            mock_emotion_model.predict("")
+        
+        # Test with None
+        with pytest.raises(ValueError):
+            mock_emotion_model.predict(None)
+        
+        # Test with non-string
+        with pytest.raises(ValueError):
+            mock_emotion_model.predict(123)
+    
+    def test_predict_batch(self, mock_emotion_model, sample_texts):
+        """Test batch prediction functionality."""
+        # Get sample texts
+        texts = sample_texts['english']
+        
+        # Make batch prediction
+        results = mock_emotion_model.predict_batch(texts)
+        
+        # Check results
+        assert isinstance(results, list)
+        assert len(results) == len(texts)
+        
+        for i, result in enumerate(results):
+            assert isinstance(result, dict)
+            assert 'text' in result
+            assert 'emotions' in result
+            assert 'dominant_emotion' in result
+            assert result['text'] == texts[i]
+            assert all(emotion in result['emotions'] for emotion in EMOTION_CLASSES)
+            assert result['dominant_emotion'] in EMOTION_CLASSES
+    
+    def test_predict_batch_empty(self, mock_emotion_model):
+        """Test batch prediction with empty inputs."""
+        # Test with empty list
+        with pytest.raises(ValueError):
+            mock_emotion_model.predict_batch([])
+        
+        # Test with list containing invalid items
+        with pytest.raises(ValueError):
+            mock_emotion_model.predict_batch(["", None, 123])
+    
+    def test_predict_batch_with_progress(self, mock_emotion_model, sample_texts):
+        """Test batch prediction with progress tracking."""
+        # Get sample texts
+        texts = sample_texts['english']
+        
+        # Make batch prediction with progress bar
+        results = mock_emotion_model.predict_batch(texts, show_progress=True)
+        
+        # Check results
+        assert isinstance(results, list)
+        assert len(results) == len(texts)
+    
+    def test_memory_usage(self, mock_emotion_model):
+        """Test memory usage monitoring."""
+        # Get memory usage
+        memory_info = mock_emotion_model.get_memory_usage()
+        
+        # Check memory info format
+        assert isinstance(memory_info, dict)
+        assert 'system_used_gb' in memory_info
+        assert 'system_available_gb' in memory_info
+        assert 'system_percent' in memory_info
+        
+        # Check values are reasonable
+        assert 0 <= memory_info['system_percent'] <= 100
+        assert memory_info['system_used_gb'] >= 0
+        assert memory_info['system_available_gb'] >= 0
+    
+    def test_batch_size_estimation(self, mock_emotion_model):
+        """Test optimal batch size estimation."""
+        # Estimate batch size
+        batch_size = mock_emotion_model.estimate_optimal_batch_size()
+        
+        # Check it's a reasonable value
+        assert isinstance(batch_size, int)
+        assert batch_size > 0
+        assert batch_size <= 128  # The default max
+    
+    def test_batch_size_auto_adjustment(self, mock_emotion_model, sample_texts):
+        """Test automatic batch size adjustment."""
+        # Get a larger set of texts by repeating samples
+        texts = sample_texts['english'] * 10  # 60 texts
+        
+        # Make batch prediction with auto-adjustment
+        results = mock_emotion_model.predict_batch(texts, batch_size=10, auto_adjust_batch=True)
+        
+        # Just check that it completes without error
+        assert len(results) == len(texts)
+    
+    def test_save_model(self, mock_emotion_model, tmp_path):
+        """Test model saving functionality."""
+        # Define a save path
+        save_path = tmp_path / "test_save_model"
+        
+        # Save the model
+        result_path = mock_emotion_model.save_model(str(save_path))
+        
+        # Check that the save was successful
+        assert os.path.exists(result_path)
+        assert os.path.exists(os.path.join(result_path, "metadata.json"))
+        
+        # Check the saved metadata
+        with open(os.path.join(result_path, "metadata.json"), 'r') as f:
+            metadata = json.load(f)
+            assert 'version' in metadata
+    
+    def test_save_model_with_version(self, mock_emotion_model, tmp_path):
+        """Test model saving with version specification."""
+        # Define a save path
+        save_path = tmp_path / "test_save_model_version"
+        test_version = "2.0.0-test"
+        
+        # Save the model with a specific version
+        result_path = mock_emotion_model.save_model(str(save_path), version=test_version)
+        
+        # Check that the save was successful
+        assert os.path.exists(result_path)
+        
+        # Check the saved metadata
+        with open(os.path.join(result_path, "metadata.json"), 'r') as f:
+            metadata = json.load(f)
+            assert metadata['version'] == test_version
+    
+    def test_create_checkpoint(self, mock_emotion_model, tmp_path):
+        """Test checkpoint creation."""
+        # Define a checkpoint directory
+        checkpoint_dir = tmp_path / "checkpoints"
+        
+        # Create a checkpoint
+        checkpoint_path = mock_emotion_model.create_checkpoint(str(checkpoint_dir))
+        
+        # Check that the checkpoint was created
+        assert os.path.exists(checkpoint_path)
+        assert "checkpoint_" in os.path.basename(checkpoint_path)
+        
+        # Check the checkpoint metadata
+        with open(os.path.join(checkpoint_path, "metadata.json"), 'r') as f:
+            metadata = json.load(f)
+            assert 'version' in metadata
+            assert 'checkpoint_time' in metadata
+            assert metadata['checkpoint_type'] == 'auto'
+    
+    def test_load_checkpoint(self, mock_emotion_model, mock_model_path, monkeypatch):
+        """Test loading a model from a checkpoint."""
+        # Create a mock checkpoint path
+        checkpoint_path = mock_model_path
+        
+        # Mock the model and tokenizer loading
+        monkeypatch.setattr('src.model.AutoTokenizer.from_pretrained', lambda *args, **kwargs: mock_emotion_model.tokenizer)
+        monkeypatch.setattr('src.model.AutoModelForSequenceClassification.from_pretrained', 
+                            lambda *args, **kwargs: mock_emotion_model.model)
+        
+        # Load the checkpoint
+        success = mock_emotion_model.load_checkpoint(checkpoint_path)
+        
+        # Check that loading was successful
+        assert success is True
+    
+    @pytest.mark.parametrize("error_type", [
+        "file_not_found", "load_error"
+    ])
+    def test_load_checkpoint_errors(self, mock_emotion_model, tmp_path, monkeypatch, error_type):
+        """Test error handling when loading checkpoints."""
+        # Create a non-existent checkpoint path
+        nonexistent_path = tmp_path / "nonexistent_checkpoint"
+        
+        if error_type == "file_not_found":
+            # Test with non-existent path
+            with pytest.raises(FileNotFoundError):
+                mock_emotion_model.load_checkpoint(str(nonexistent_path))
+        
+        elif error_type == "load_error":
+            # Create empty directory to simulate a corrupted checkpoint
+            test_path = tmp_path / "corrupt_checkpoint"
+            test_path.mkdir()
+            
+            # Mock an error during loading
+            def mock_error(*args, **kwargs):
+                raise ValueError("Test error loading model")
+            
+            monkeypatch.setattr('src.model.AutoModelForSequenceClassification.from_pretrained', mock_error)
+            
+            # Test with corrupted checkpoint
+            with pytest.raises(OSError):
+                mock_emotion_model.load_checkpoint(str(test_path))
+
+"""
 Tests for the model module.
 """
 

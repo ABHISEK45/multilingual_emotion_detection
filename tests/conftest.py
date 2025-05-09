@@ -1,4 +1,186 @@
 """
+Test fixtures and mock data for the multilingual emotion detection system.
+
+This module provides shared fixtures and data for use across all test modules.
+"""
+
+import os
+import json
+import pytest
+import pandas as pd
+import torch
+from pathlib import Path
+import tempfile
+import shutil
+from unittest.mock import MagicMock, patch
+
+from src.model import EmotionDetectionModel, EMOTION_CLASSES
+
+
+@pytest.fixture
+def sample_texts():
+    """Fixture with sample texts in different languages."""
+    return {
+        'english': [
+            "I am feeling very happy today!",
+            "This news makes me so sad.",
+            "I'm really angry about what happened.",
+            "I'm scared of the dark.",
+            "Wow, I'm surprised by the results!",
+            "The weather is nice today."
+        ],
+        'hindi': [
+            "मुझे आज बहुत खुशी है।",
+            "इस खबर से मुझे बहुत दुःख हुआ।",
+            "मुझे इस घटना पर बहुत गुस्सा आ रहा है।",
+            "मुझे अंधेरे से डर लगता है।",
+            "वाह, मुझे परिणामों से आश्चर्य हुआ!",
+            "आज मौसम अच्छा है।"
+        ],
+        'hinglish': [
+            "Main bahut happy feel kar raha hoon.",
+            "Yeh news mujhe sad kar deti hai.",
+            "Main is incident se angry hoon.",
+            "Mujhe dark se dar lagta hai.",
+            "Wow, main results se surprised hoon!",
+            "Weather aaj acha hai."
+        ],
+        'invalid': [
+            "",
+            None,
+            123,
+            ["This is not a string"],
+            {"text": "This is a dictionary"}
+        ]
+    }
+
+
+@pytest.fixture
+def mock_model_path(tmp_path):
+    """Create a mock model directory with required files."""
+    model_dir = tmp_path / "test_model"
+    model_dir.mkdir()
+    
+    # Create mock model files
+    config = {
+        "architectures": ["RobertaForSequenceClassification"],
+        "model_type": "roberta",
+        "num_labels": len(EMOTION_CLASSES)
+    }
+    
+    with open(model_dir / "config.json", "w") as f:
+        json.dump(config, f)
+    
+    # Create an empty model file
+    with open(model_dir / "pytorch_model.bin", "wb") as f:
+        f.write(b"mock model data")
+    
+    # Create metadata
+    with open(model_dir / "metadata.json", "w") as f:
+        json.dump({
+            "version": "1.0.0-test",
+            "creation_date": "2025-01-01T00:00:00",
+            "last_updated": "2025-01-01T00:00:00"
+        }, f)
+    
+    return str(model_dir)
+
+
+@pytest.fixture
+def mock_tokenizer():
+    """Create a mock tokenizer."""
+    tokenizer = MagicMock()
+    tokenizer.return_value = {
+        "input_ids": torch.ones((1, 10), dtype=torch.long),
+        "attention_mask": torch.ones((1, 10), dtype=torch.long)
+    }
+    return tokenizer
+
+
+@pytest.fixture
+def mock_model():
+    """Create a mock model."""
+    model = MagicMock()
+    model.return_value = MagicMock()
+    # Mock outputs with logits
+    model.return_value.logits = torch.rand((1, len(EMOTION_CLASSES)))
+    return model
+
+
+@pytest.fixture
+def mock_emotion_model(monkeypatch, mock_tokenizer, mock_model):
+    """Create a mock EmotionDetectionModel instance."""
+    monkeypatch.setattr('src.model.AutoTokenizer.from_pretrained', lambda *args, **kwargs: mock_tokenizer)
+    monkeypatch.setattr('src.model.AutoModelForSequenceClassification.from_pretrained', 
+                        lambda *args, **kwargs: mock_model)
+    return EmotionDetectionModel()
+
+
+@pytest.fixture
+def sample_dataset():
+    """Create a sample dataset for testing."""
+    data = {
+        'text': [
+            "I am feeling very happy today!",
+            "This news makes me so sad.",
+            "मुझे आज बहुत खुशी है।",
+            "इस खबर से मुझे बहुत दुःख हुआ।",
+            "Main bahut happy feel kar raha hoon."
+        ],
+        'language': ['en', 'en', 'hi', 'hi', 'en'],
+        'label': ['Joy', 'Sadness', 'Joy', 'Sadness', 'Joy']
+    }
+    return pd.DataFrame(data)
+
+
+@pytest.fixture
+def sample_dataset_path(sample_dataset, tmp_path):
+    """Save sample dataset to a temporary file and return its path."""
+    dataset_path = tmp_path / "sample_dataset.csv"
+    sample_dataset.to_csv(dataset_path, index=False)
+    return str(dataset_path)
+
+
+@pytest.fixture
+def output_path(tmp_path):
+    """Provide a temporary output path."""
+    return str(tmp_path / "output.json")
+
+
+@pytest.fixture
+def mock_transform_module():
+    """Mock the transformers module."""
+    # Create mock module with the necessary components
+    transformers_mock = MagicMock()
+    transformers_mock.AutoModelForSequenceClassification = MagicMock()
+    transformers_mock.AutoTokenizer = MagicMock()
+    
+    # Configure the mock model
+    model_mock = MagicMock()
+    model_mock.eval = MagicMock(return_value=None)
+    model_mock.to = MagicMock(return_value=model_mock)
+    model_mock.save_pretrained = MagicMock()
+    
+    # Configure mock outputs for prediction
+    outputs_mock = MagicMock()
+    outputs_mock.logits = torch.tensor([[0.1, 0.5, 0.1, 0.1, 0.1, 0.1]])  # Sadness is highest
+    model_mock.return_value = outputs_mock
+    
+    # Configure the mock tokenizer
+    tokenizer_mock = MagicMock()
+    tokenizer_mock.return_value = {
+        "input_ids": torch.tensor([[1, 2, 3, 4, 5]]),
+        "attention_mask": torch.tensor([[1, 1, 1, 1, 1]])
+    }
+    tokenizer_mock.save_pretrained = MagicMock()
+    
+    # Assign to auto classes
+    transformers_mock.AutoModelForSequenceClassification.from_pretrained.return_value = model_mock
+    transformers_mock.AutoTokenizer.from_pretrained.return_value = tokenizer_mock
+    
+    return transformers_mock
+
+"""
 Common test fixtures for the multilingual emotion detection project.
 """
 

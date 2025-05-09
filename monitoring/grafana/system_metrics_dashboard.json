@@ -1,0 +1,513 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "title": "System Metrics Dashboard",
+  "description": "Dashboard for monitoring system-level metrics for the multilingual emotion detection application",
+  "tags": ["system", "metrics", "monitoring"],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "panels": [
+    {
+      "title": "CPU Usage",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "100 - (avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)",
+          "legendFormat": "CPU Usage %",
+          "refId": "A"
+        },
+        {
+          "expr": "avg by (mode) (irate(node_cpu_seconds_total{mode!=\"idle\",mode!=\"iowait\"}[1m]) * 100)",
+          "legendFormat": "{{mode}}",
+          "refId": "B"
+        }
+      ],
+      "datasource": "Prometheus",
+      "renderer": "flot",
+      "yaxes": [
+        {
+          "label": "percent",
+          "show": true,
+          "logBase": 1,
+          "min": "0",
+          "max": "100"
+        },
+        {
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true
+      },
+      "dashLength": 10,
+      "linewidth": 1,
+      "pointradius": 2,
+      "bars": false,
+      "lines": true,
+      "fill": 1,
+      "fillGradient": 0,
+      "aliasColors": {},
+      "seriesOverrides": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "description": "CPU usage percentage across all cores"
+    },
+    {
+      "title": "Memory Usage",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "node_memory_MemTotal_bytes - node_memory_MemFree_bytes - node_memory_Buffers_bytes - node_memory_Cached_bytes",
+          "legendFormat": "Used Memory",
+          "refId": "A"
+        },
+        {
+          "expr": "node_memory_MemFree_bytes",
+          "legendFormat": "Free Memory",
+          "refId": "B"
+        },
+        {
+          "expr": "node_memory_Cached_bytes + node_memory_Buffers_bytes",
+          "legendFormat": "Cached & Buffers",
+          "refId": "C"
+        }
+      ],
+      "datasource": "Prometheus",
+      "renderer": "flot",
+      "yaxes": [
+        {
+          "label": "bytes",
+          "show": true,
+          "logBase": 1,
+          "format": "bytes"
+        },
+        {
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true
+      },
+      "dashLength": 10,
+      "linewidth": 1,
+      "pointradius": 2,
+      "bars": false,
+      "lines": true,
+      "stack": true,
+      "fill": 1,
+      "fillGradient": 0,
+      "aliasColors": {},
+      "seriesOverrides": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "description": "Memory usage distribution"
+    },
+    {
+      "title": "Disk I/O",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "rate(node_disk_read_bytes_total[1m])",
+          "legendFormat": "Read {{device}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_disk_written_bytes_total[1m])",
+          "legendFormat": "Write {{device}}",
+          "refId": "B"
+        }
+      ],
+      "datasource": "Prometheus",
+      "renderer": "flot",
+      "yaxes": [
+        {
+          "label": "bytes/sec",
+          "show": true,
+          "logBase": 1,
+          "format": "Bps"
+        },
+        {
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true
+      },
+      "dashLength": 10,
+      "linewidth": 1,
+      "pointradius": 2,
+      "bars": false,
+      "lines": true,
+      "fill": 1,
+      "fillGradient": 0,
+      "aliasColors": {},
+      "seriesOverrides": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "description": "Disk read/write throughput"
+    },
+    {
+      "title": "Network Traffic",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "rate(node_network_receive_bytes_total[1m])",
+          "legendFormat": "Receive {{device}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_network_transmit_bytes_total[1m])",
+          "legendFormat": "Transmit {{device}}",
+          "refId": "B"
+        }
+      ],
+      "datasource": "Prometheus",
+      "renderer": "flot",
+      "yaxes": [
+        {
+          "label": "bytes/sec",
+          "show": true,
+          "logBase": 1,
+          "format": "Bps"
+        },
+        {
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true
+      },
+      "dashLength": 10,
+      "linewidth": 1,
+      "pointradius": 2,
+      "bars": false,
+      "lines": true,
+      "fill": 1,
+      "fillGradient": 0,
+      "aliasColors": {},
+      "seriesOverrides": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "description": "Network receive/transmit throughput"
+    },
+    {
+      "title": "Process Status",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "up",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {"text": "Down", "color": "red"},
+                "1": {"text": "Up", "color": "green"}
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "description": "Status of monitored processes"
+    },
+    {
+      "title": "Thread Count",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 16
+      },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "process_threads_total",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus",
+      "renderer": "flot",
+      "yaxes": [
+        {
+          "label": "threads",
+          "show": true,
+          "logBase": 1,
+          "min": "0"
+        },
+        {
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true
+      },
+      "dashLength": 10,
+      "linewidth": 1,
+      "pointradius": 2,
+      "bars": false,
+      "lines": true,
+      "fill": 1,
+      "fillGradient": 0,
+      "aliasColors": {},
+      "seriesOverrides": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "description": "Number of application threads"
+    },
+    {
+      "title": "Open File Descriptors",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "process_open_fds",
+          "legendFormat": "{{job}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus",
+      "renderer": "flot",
+      "yaxes": [
+        {
+          "label": "file descriptors",
+          "show": true,
+          "logBase": 1,
+          "min": "0"
+        },
+        {
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true
+      },
+      "dashLength": 10,
+      "linewidth": 1,
+      "pointradius": 2,
+      "bars": false,
+      "lines": true,
+      "fill": 1,
+      "fillGradient": 0,
+      "aliasColors": {},
+      "seriesOverrides": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "description": "Number of open file descriptors by process"
+    },
+    {
+      "title": "System Load Average",
+      "type": "graph",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "node_load1",
+          "legendFormat": "1m Load",
+          "refId": "A"
+        },
+        {
+          "expr": "node_load5",
+          "legendFormat": "5m Load",
+          "refId": "B"
+        },
+        {
+          "expr": "node_load15",
+          "legendFormat": "15m Load",
+          "refId": "C"
+        },
+        {
+          "expr": "count(node_cpu_seconds_total{mode=\"idle\"})",
+          "legendFormat": "CPU Cores",
+          "refId": "D"
+        }
+      ],
+      "datasource": "Prometheus",
+      "renderer": "flot",
+      "yaxes": [
+        {
+          "label": "load",
+          "show": true,
+          "logBase": 1,
+          "min": "0"
+        },
+        {
+          "show": false
+        }
+      ],
+      "xaxis": {
+        "show": true
+      },
+      "dashLength": 10,
+      "linewidth": 1,
+      "pointradius": 2,
+      "bars": false,
+      "lines": true,
+      "fill": 1,
+      "fillGradient": 0,
+      "aliasColors": {},
+      "seriesOverrides": [],
+      "tooltip": {
+        "shared": true,
+        "sort": 0,
+        "value_type": "individual"
+      },
+      "description": "System load average compared to number of CPU cores"
+    },
+    {
+      "title": "System Uptime",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 24
+      },
+      "id": 9,
+      "targets": [
+        {
+          "expr": "node_time_seconds - node_boot_time_seconds",
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "datasource": "Prometheus",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          
+

@@ -1,0 +1,18 @@
+{
+  "MODEL": {
+    "PATH": "models/custom_model",
+    "BATCH_SIZE": 32,
+    "AUTO_ADJUST_BATCH": true
+  },
+  "API": {
+    "HOST": "localhost",
+    "PORT": 8000,
+    "RATE_LIMIT": 200,
+    "CORS_ORIGINS": ["http://localhost:3000"]
+  },
+  "LOGGING": {
+    "LEVEL": "DEBUG",
+    "FORMAT": "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s"
+  }
+}
+

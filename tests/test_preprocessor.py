@@ -1,4 +1,348 @@
 """
+Tests for the text preprocessing module.
+
+This module tests the functionality of the preprocessor module,
+including language detection, text cleaning, and Hindi text processing.
+"""
+
+import pytest
+import pandas as pd
+import re
+from unittest.mock import patch, MagicMock
+from pathlib import Path
+
+from src.preprocessor import (
+    detect_language, validate_text, clean_text, normalize_hindi_text,
+    preprocess_text, load_dataset, prepare_dataset, tokenize_text,
+    transliterate_to_devanagari, detect_mixed_script_hindi,
+    validate_hindi_text, process_hinglish_text, is_likely_romanized_hindi,
+    handle_mixed_script_text
+)
+
+
+class TestLanguageDetection:
+    """Tests for language detection functionality."""
+    
+    def test_detect_english(self, sample_texts):
+        """Test detection of English text."""
+        for text in sample_texts['english']:
+            if isinstance(text, str) and text:
+                detected = detect_language(text)
+                assert detected == 'en', f"Failed to detect English: {text}"
+    
+    def test_detect_hindi(self, sample_texts):
+        """Test detection of Hindi text."""
+        for text in sample_texts['hindi']:
+            if isinstance(text, str) and text:
+                detected = detect_language(text)
+                assert detected == 'hi', f"Failed to detect Hindi: {text}"
+    
+    def test_detect_hinglish(self, sample_texts):
+        """Test detection of Hinglish (mixed Hindi-English) text."""
+        # Hinglish is typically detected as English due to Latin script
+        for text in sample_texts['hinglish']:
+            if isinstance(text, str) and text:
+                detected = detect_language(text)
+                # Most Hinglish should be detected as English due to script
+                assert detected in ['en', 'hi'], f"Unexpected language detected for Hinglish: {detected}"
+                
+                # Check if it's recognized as mixed script
+                is_mixed = detect_mixed_script_hindi(text)
+                assert is_mixed, f"Failed to detect Hinglish as mixed script: {text}"
+    
+    def test_detect_language_invalid_input(self, sample_texts):
+        """Test language detection with invalid inputs."""
+        for text in sample_texts['invalid']:
+            if not isinstance(text, str) or not text:
+                with pytest.raises(ValueError):
+                    detect_language(text)
+    
+    @patch('src.preprocessor.detect')
+    def test_detect_language_with_library(self, mock_detect):
+        """Test language detection using the langdetect library."""
+        # Mock the langdetect library to return specific values
+        mock_detect.return_value = 'en'
+        
+        # Test with English text
+        assert detect_language("This is English text.") == 'en'
+        
+        # Mock for Hindi
+        mock_detect.return_value = 'hi'
+        assert detect_language("हिंदी पाठ") == 'hi'
+        
+        # Test fallback mechanism when langdetect raises an exception
+        mock_detect.side_effect = Exception("Test exception")
+        
+        # Should still work for obvious Hindi text using heuristic
+        assert detect_language("यह हिंदी पाठ है।") == 'hi'
+        
+        # Should default to English for non-Devanagari
+        assert detect_language("This should default to English") == 'en'
+
+
+class TestTextCleaning:
+    """Tests for text cleaning functionality."""
+    
+    def test_validate_text(self):
+        """Test text validation."""
+        # Valid texts
+        assert validate_text("Hello world")[0], "Valid text should be accepted"
+        assert validate_text("हिंदी पाठ")[0], "Valid Hindi text should be accepted"
+        
+        # Invalid texts
+        assert not validate_text("")[0], "Empty string should be invalid"
+        assert not validate_text(None)[0], "None should be invalid"
+        assert not validate_text(123)[0], "Non-string should be invalid"
+        assert not validate_text("   ")[0], "Whitespace-only string should be invalid"
+    
+    def test_clean_text(self, sample_texts):
+        """Test text cleaning functionality."""
+        # Test with English text
+        for text in sample_texts['english']:
+            if isinstance(text, str) and text:
+                cleaned = clean_text(text)
+                # Check that URLs are removed
+                assert "http" not in cleaned.lower()
+                # Check that extra whitespace is normalized
+                assert not re.search(r'\s{2,}', cleaned)
+                # Check text is not empty after cleaning
+                assert cleaned
+        
+        # Test with Hindi text
+        for text in sample_texts['hindi']:
+            if isinstance(text, str) and text:
+                cleaned = clean_text(text)
+                # Check that cleaned text contains the original Hindi characters
+                assert any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in cleaned)
+    
+    def test_clean_text_special_cases(self):
+        """Test text cleaning with special inputs."""
+        # Text with URLs
+        text_with_url = "Check out https://example.com and www.example.org for more info."
+        cleaned = clean_text(text_with_url)
+        assert "https://example.com" not in cleaned
+        assert "www.example.org" not in cleaned
+        
+        # Text with HTML tags
+        text_with_html = "<p>This is a paragraph</p> with <b>bold</b> text."
+        cleaned = clean_text(text_with_html)
+        assert "<p>" not in cleaned
+        assert "<b>" not in cleaned
+        
+        # Text with email address
+        text_with_email = "Contact me at user@example.com for more information."
+        cleaned = clean_text(text_with_email)
+        assert "user@example.com" not in cleaned
+    
+    def test_clean_text_error_handling(self, sample_texts):
+        """Test error handling in text cleaning."""
+        # Test with invalid inputs
+        for text in sample_texts['invalid']:
+            if not isinstance(text, str) or not text:
+                with pytest.raises(ValueError):
+                    clean_text(text)
+
+
+class TestHindiTextProcessing:
+    """Tests for Hindi text processing functionality."""
+    
+    def test_normalize_hindi_text(self, sample_texts):
+        """Test Hindi text normalization."""
+        for text in sample_texts['hindi']:
+            if isinstance(text, str) and text:
+                normalized = normalize_hindi_text(text)
+                # Check that normalization preserves Hindi characters
+                assert any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in normalized)
+                # Check that text is not empty after normalization
+                assert normalized
+    
+    def test_normalize_hindi_text_with_variants(self):
+        """Test normalization of Hindi text with variant characters."""
+        # Text with nukta and other variants
+        text_with_variants = "फ़िल्म और क़िस्सा"  # Film and story with nukta variants
+        normalized = normalize_hindi_text(text_with_variants)
+        # Should preserve the text while normalizing variants
+        assert normalized
+        assert "फ" in normalized or "फ़" in normalized
+        assert "क" in normalized or "क़" in normalized
+    
+    def test_validate_hindi_text(self, sample_texts):
+        """Test validation of Hindi text."""
+        # Valid Hindi texts
+        for text in sample_texts['hindi']:
+            if isinstance(text, str) and text:
+                is_valid, _ = validate_hindi_text(text)
+                assert is_valid, f"Valid Hindi text should pass validation: {text}"
+        
+        # Romanized Hindi (Hinglish) texts - should detect as potentially Hindi
+        for text in sample_texts['hinglish']:
+            if isinstance(text, str) and text:
+                is_valid, message = validate_hindi_text(text)
+                assert is_valid, f"Hinglish should be recognized as potential Hindi: {text}"
+                assert "Latin script" in message
+        
+        # Texts without Hindi characters
+        for text in sample_texts['english']:
+            if isinstance(text, str) and text:
+                # Pure English text without Hindi markers should not be valid Hindi
+                if not any(marker in text.lower() for marker in ["hindi", "namaste", "desi"]):
+                    is_valid, _ = validate_hindi_text(text)
+                    assert not is_valid, f"Pure English should not pass Hindi validation: {text}"
+    
+    def test_detect_mixed_script_hindi(self, sample_texts):
+        """Test detection of Hindi text written in Latin script."""
+        # Hinglish texts should be detected as mixed script
+        for text in sample_texts['hinglish']:
+            if isinstance(text, str) and text:
+                is_mixed = detect_mixed_script_hindi(text)
+                assert is_mixed, f"Failed to detect Hinglish: {text}"
+        
+        # Pure English texts should not be detected as mixed script
+        for text in sample_texts['english']:
+            if isinstance(text, str) and text and not any(marker in text.lower() for marker in ["hindi", "namaste", "desi"]):
+                is_mixed = detect_mixed_script_hindi(text)
+                assert not is_mixed, f"Incorrectly detected as Hinglish: {text}"
+    
+    def test_is_likely_romanized_hindi(self):
+        """Test function to identify likely romanized Hindi words."""
+        # Words that should be identified as Hindi
+        hindi_words = ["namaste", "dhanyavaad", "kaise", "aapka", "theek", "hain", "kya", "acha"]
+        for word in hindi_words:
+            assert is_likely_romanized_hindi(word), f"Should identify as Hindi: {word}"
+        
+        # Words that should not be identified as Hindi
+        english_words = ["hello", "thank", "you", "good", "bye", "computer", "file"]
+        for word in english_words:
+            assert not is_likely_romanized_hindi(word), f"Should not identify as Hindi: {word}"
+    
+    def test_transliterate_to_devanagari(self):
+        """Test transliteration from Latin script to Devanagari."""
+        # Basic transliteration cases
+        test_cases = [
+            ("namaste", "नमस्ते"),
+            ("kya hal hai", "क्या हल है"),
+            ("mera naam", "मेरा नाम"),
+            ("bharat mata ki jai", "भारत माता की जय")
+        ]
+        
+        for latin, expected_devanagari in test_cases:
+            transliterated = transliterate_to_devanagari(latin)
+            # We're checking if the key Hindi words are transliterated correctly
+            # Exact matches are hard due to variations in transliteration schemes
+            for hindi_word in expected_devanagari.split():
+                assert hindi_word in transliterated, f"Failed to transliterate '{latin}' correctly"
+    
+    def test_handle_mixed_script_text(self):
+        """Test handling of text with mixed scripts."""
+        # Mixed Hindi (Devanagari) and English
+        mixed_text = "मैं office में काम करता हूँ"  # I work in an office
+        handled = handle_mixed_script_text(mixed_text)
+        
+        # Should preserve Devanagari portions
+        assert "मैं" in handled
+        assert "में" in handled
+        assert "काम करता हूँ" in handled
+        
+        # Should also handle the English word
+        assert "office" in handled
+    
+    def test_process_hinglish_text(self):
+        """Test processing of Hinglish text."""
+        # Hinglish text (Hindi written in Latin with some English words)
+        hinglish = "Main office mein kaam karta hoon"  # I work in an office
+        processed = process_hinglish_text(hinglish)
+        
+        # Should contain transliterated Hindi words
+        assert re.search(r'[\u0900-\u097F]', processed), "Should contain Devanagari characters"
+        
+        # Should preserve English words
+        assert "office" in processed
+
+
+class TestPreprocessing:
+    """Tests for text preprocessing functionality."""
+    
+    def test_preprocess_text_english(self, sample_texts):
+        """Test preprocessing of English text."""
+        for text in sample_texts['english']:
+            if isinstance(text, str) and text:
+                processed = preprocess_text(text, 'en')
+                # Check that text is lowercased
+                assert processed == processed.lower()
+                # Check that non-alphanumeric characters are removed
+                assert not re.search(r'[^a-z0-9\s]', processed)
+    
+    def test_preprocess_text_hindi(self, sample_texts):
+        """Test preprocessing of Hindi text."""
+        for text in sample_texts['hindi']:
+            if isinstance(text, str) and text:
+                processed = preprocess_text(text, 'hi')
+                # Check that Hindi characters are preserved
+                assert any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in processed)
+    
+    def test_preprocess_text_auto_detection(self, sample_texts):
+        """Test preprocessing with automatic language detection."""
+        # Mix of English and Hindi texts
+        mixed_texts = sample_texts['english'][:2] + sample_texts['hindi'][:2]
+        
+        for text in mixed_texts:
+            if isinstance(text, str) and text:
+                # Preprocess with auto detection
+                processed = preprocess_text(text)
+                
+                # Check that text is processed
+                assert processed
+                
+                # For Hindi text, check that Devanagari is preserved
+                if any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in text):
+                    assert any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in processed)
+    
+    def test_preprocess_text_error_handling(self, sample_texts):
+        """Test error handling in text preprocessing."""
+        # Test with invalid inputs
+        for text in sample_texts['invalid']:
+            if not isinstance(text, str) or not text:
+                with pytest.raises(ValueError):
+                    preprocess_text(text)
+        
+        # Test with invalid language
+        with pytest.raises(ValueError):
+            preprocess_text("Test text", language="invalid_lang")
+
+
+class TestDatasetProcessing:
+    """Tests for dataset processing functionality."""
+    
+    def test_load_dataset_csv(self, tmp_path):
+        """Test loading dataset from CSV file."""
+        # Create a sample CSV file
+        csv_path = tmp_path / "test_data.csv"
+        data = pd.DataFrame({
+            'text': ['Test text 1', 'Test text 2'],
+            'label': ['Joy', 'Sadness']
+        })
+        data.to_csv(csv_path, index=False)
+        
+        # Load the dataset
+        loaded_data = load_dataset(csv_path)
+        
+        # Check that data is loaded correctly
+        assert isinstance(loaded_data, pd.DataFrame)
+        assert len(loaded_data) == 2
+        assert 'text' in loaded_data.columns
+        assert 'label' in loaded_data.columns
+    
+    def test_load_dataset_json(self, tmp_path):
+        """Test loading dataset from JSON file."""
+        # Create a sample JSON file
+        json_path = tmp_path / "test_data.json"
+        data = pd.DataFrame({
+            'text': ['Test text 1', 'Test text 2'],
+            'label': ['Joy', 'Sadness']
+        })
+        data.to_
+
+"""
 Tests for the preprocessor module.
 """
 
