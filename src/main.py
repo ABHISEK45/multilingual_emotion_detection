@@ -15,6 +15,7 @@ import traceback
 from typing import Dict, List, Optional, Any, Union, Tuple
 from pathlib import Path
 from tqdm import tqdm
+import torch
 
 from . import preprocessor
 from . import model
